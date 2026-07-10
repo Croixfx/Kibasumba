@@ -3,3 +3,5 @@ dist/
 
 # Secrets — never commit
 .env
+.vercel
+.env*
