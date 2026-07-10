@@ -1,0 +1,6 @@
+# Secrets — never commit
+.env
+
+__pycache__/
+db.sqlite3
+server.log

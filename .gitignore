@@ -1,0 +1,5 @@
+# Local editor/agent settings
+.claude/
+
+# Secrets — never commit
+.env
