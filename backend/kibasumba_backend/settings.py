@@ -13,26 +13,34 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 from pathlib import Path
 
+import dj_database_url
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Secrets (Twilio credentials etc.) live in backend/.env, which must never
-# be committed to version control.
+# be committed to version control. On Render they come from the dashboard
+# environment instead.
 load_dotenv(BASE_DIR / '.env')
 
+# The insecure fallback is for local dev only; Render generates a real one.
+SECRET_KEY = os.environ.get(
+    'SECRET_KEY',
+    'django-insecure-3!$uz%@x#-^9*(1ds1g78$85hrzmna0tuj-!nn^4)q1=g1qvo-',
+)
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-3!$uz%@x#-^9*(1ds1g78$85hrzmna0tuj-!nn^4)q1=g1qvo-'
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Defaults to True so local dev needs no env vars; render.yaml sets DEBUG=false.
+DEBUG = os.environ.get('DEBUG', 'true').lower() == 'true'
 
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '10.0.2.2']
+
+# Render injects its public hostname (e.g. kibasumba-backend.onrender.com).
+RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+    CSRF_TRUSTED_ORIGINS = [f'https://{RENDER_EXTERNAL_HOSTNAME}']
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Application definition
@@ -62,6 +70,7 @@ REST_FRAMEWORK = {
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -93,11 +102,12 @@ WSGI_APPLICATION = 'kibasumba_backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+# SQLite locally; Render provides DATABASE_URL pointing at Postgres.
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default=f'sqlite:///{BASE_DIR / "db.sqlite3"}',
+        conn_max_age=600,
+    )
 }
 
 
@@ -136,16 +146,30 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Whitenoise serves collected static files (Django admin CSS) in production.
+# Non-manifest compressed storage: the coat-of-arms PNG is read straight from
+# backend/static/ by the PDF generator, not through staticfiles.
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
+}
 
 
 # SMS delivery
 # 'console' prints the OTP to the terminal (no real SMS); 'twilio' sends a
 # real SMS using the credentials below.
 
-# React admin dev server (Vite). Update for the deployed admin origin.
+# React admin: Vite dev server + deployed Vercel origins.
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
+    'https://kibasumba-admin.vercel.app',
+]
+# Vercel preview deployments (kibasumba-admin-<hash>-....vercel.app).
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r'^https://kibasumba-admin-[\w-]+\.vercel\.app$',
 ]
 
 SMS_BACKEND = os.environ.get('SMS_BACKEND', 'console')
